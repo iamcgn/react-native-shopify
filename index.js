@@ -31,6 +31,9 @@ export default {
         throw new Error(getCheckoutError(error.message));
       });
   },
+  registerUser: (firstName, lastName, email, password) => {
+    return RNShopify.registerUser(firstName, lastName, email, password);
+  }
 };
 
 /**
