@@ -233,6 +233,24 @@ RCT_EXPORT_METHOD(registerUser:(NSString *)firstName lastName:(NSString *)lastNa
     }];
 }
 
+RCT_EXPORT_METHOD(loginUser:(NSString *)email password:(NSString *)password resolver:(RCTPromiseResolveBlock)resolve
+                  rejcter:(RCTPromiseRejectBlock)reject)
+{
+    BUYAccountCredentialItem *emailItem = [BUYAccountCredentialItem itemWithEmail:email];
+    BUYAccountCredentialItem *passwordItem = [BUYAccountCredentialItem itemWithPassword:password];
+    
+    BUYAccountCredentials *creds = [BUYAccountCredentials credentialsWithItems:@[emailItem, passwordItem]];
+    [self.client loginCustomerWithCredentials:creds callback:^(BUYCustomer * _Nullable customer, BUYCustomerToken * _Nullable token, NSError * _Nullable error) {
+        if (error) {
+            return reject([NSString stringWithFormat:@"%ld", error.code], [self getJsonFromError:error], error);
+        }
+        
+        NSMutableDictionary *customerDict = [[customer JSONDictionary] mutableCopy];
+        customerDict[@"token"] = [token JSONDictionary];
+        resolve([customerDict copy]);
+    }];
+}
+
 #pragma mark - BUYPaymentProvider delegate implementation -
 
 - (void)paymentProvider:(id<BUYPaymentProvider>)provider wantsControllerPresented:(UIViewController *)controller

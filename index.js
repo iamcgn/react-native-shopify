@@ -33,7 +33,10 @@ export default {
   },
   registerUser: (firstName, lastName, email, password) => {
     return RNShopify.registerUser(firstName, lastName, email, password);
-  }
+  },
+  loginUser: (email, password) => {
+    return RNShopify.loginUser(email, password);
+  },
 };
 
 /**
