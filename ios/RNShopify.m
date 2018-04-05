@@ -1,3 +1,5 @@
+@import LocalAuthentication;
+
 #import "RNShopify.h"
 #import "Buy.h"
 
@@ -251,6 +253,99 @@ RCT_EXPORT_METHOD(loginUser:(NSString *)email password:(NSString *)password reso
     }];
 }
 
+RCT_EXPORT_METHOD(biometricAuthenticationIsAvailable:(RCTPromiseResolveBlock) resolve
+                  rejcter:(RCTPromiseRejectBlock)reject)
+{
+    LAContext *localAuthContext = [[LAContext alloc] init];
+    BOOL isAvailable = [localAuthContext canEvaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics error:nil];
+    resolve(@(isAvailable));
+}
+
+//TODO: Add paramter for service
+RCT_EXPORT_METHOD(saveUserCredentials:(NSString *)email password:(NSString *)password resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+    //Code copied from Apple's sample project: "KeychainTouchID: Using Touch ID with Keychain and LocalAuthentication"
+    CFErrorRef error = NULL;
+    
+    // Should be the secret invalidated when passcode is removed? If not then use kSecAttrAccessibleWhenUnlocked
+    SecAccessControlRef sacObject = SecAccessControlCreateWithFlags(kCFAllocatorDefault,
+                                                                    kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+                                                                    kSecAccessControlTouchIDAny, &error);
+    if (sacObject == NULL || error) {
+        NSError *bridgedError = (__bridge NSError *)error;
+        reject(@"error saving password", [bridgedError localizedDescription], bridgedError);
+        return;
+    }
+    
+    NSDictionary *credentialsDict = @{@"email": email, @"password": password};
+    NSData *credentialsData = [NSJSONSerialization dataWithJSONObject:credentialsDict options:kNilOptions error:nil];
+    
+    NSDictionary *attributes = @{
+                                 (id)kSecClass: (id)kSecClassGenericPassword,
+                                 (id)kSecAttrService: @"com.react-native-shopify.keychain",
+                                 (id)kSecValueData: credentialsData,
+                                 (id)kSecUseAuthenticationUI: (id)kSecUseAuthenticationUIAllow,
+                                 (id)kSecAttrAccessControl: (__bridge_transfer id)sacObject
+                                 };
+    
+    dispatch_async(dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        OSStatus status =  SecItemAdd((__bridge CFDictionaryRef)attributes, nil);
+        
+        if (status == errSecSuccess) {
+            resolve(@YES);
+        } else {
+            reject(@"error saving password", [self keychainErrorToString:status], nil);
+        }
+    });
+}
+
+//TODO: Add parameter for kSecUseOperationPrompt and service
+RCT_EXPORT_METHOD(recoverSavedUserCredentials:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+{
+    //Code copied from Apple's sample project: "KeychainTouchID: Using Touch ID with Keychain and LocalAuthentication"u
+    NSDictionary *query = @{
+                            (id)kSecClass: (id)kSecClassGenericPassword,
+                            (id)kSecAttrService: @"com.react-native-shopify.keychain",
+                            (id)kSecReturnData: @YES,
+                            (id)kSecUseAuthenticationUI: (id)kSecUseAuthenticationUIAllow,
+                            (id)kSecUseOperationPrompt: @"Authenticate to access account",
+                            };
+    
+    dispatch_async(dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        CFTypeRef dataTypeRef = NULL;
+        
+        OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)(query), &dataTypeRef);
+        if (status == errSecSuccess) {
+            NSData *resultData = (__bridge_transfer NSData *)dataTypeRef;
+            NSDictionary *userCredentials = [NSJSONSerialization JSONObjectWithData:resultData options:kNilOptions error:nil];
+            
+            resolve(userCredentials);
+        }
+        else {
+            NSLog(@"%@", [NSString stringWithFormat:@"SecItemCopyMatching status: %@", [self keychainErrorToString:status]]);
+            reject(@"unable to retrieve credentials", [@(status) stringValue], nil);
+        }
+    });
+}
+
+RCT_EXPORT_METHOD(deleteStoredUserCredentials:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+{
+    NSDictionary *query = @{
+                            (id)kSecClass: (id)kSecClassGenericPassword,
+                            (id)kSecAttrService: @"com.react-native-shopify.keychain"
+                            };
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        OSStatus status = SecItemDelete((__bridge CFDictionaryRef)query);
+        
+        NSString *errorString = [self keychainErrorToString:status];
+        NSString *message = [NSString stringWithFormat:@"SecItemDelete status: %@", errorString];
+        
+        resolve(@YES);
+    });
+}
+
 #pragma mark - BUYPaymentProvider delegate implementation -
 
 - (void)paymentProvider:(id<BUYPaymentProvider>)provider wantsControllerPresented:(UIViewController *)controller
@@ -366,6 +461,33 @@ RCT_EXPORT_METHOD(loginUser:(NSString *)email password:(NSString *)password reso
     NSError * err;
     NSData * jsonData = [NSJSONSerialization dataWithJSONObject:error.userInfo options:0 error:&err];
     return [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+}
+
+- (NSString *)keychainErrorToString:(OSStatus)error {
+    NSString *message = [NSString stringWithFormat:@"%ld", (long)error];
+    
+    switch (error) {
+        case errSecSuccess:
+            message = @"success";
+            break;
+            
+        case errSecDuplicateItem:
+            message = @"error item already exists";
+            break;
+            
+        case errSecItemNotFound :
+            message = @"error item not found";
+            break;
+            
+        case errSecAuthFailed:
+            message = @"error item authentication failed";
+            break;
+            
+        default:
+            break;
+    }
+    
+    return message;
 }
 
 @end

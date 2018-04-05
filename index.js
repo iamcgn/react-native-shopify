@@ -37,6 +37,18 @@ export default {
   loginUser: (email, password) => {
     return RNShopify.loginUser(email, password);
   },
+  biometricAuthenticationIsAvailable: () => {
+    return RNShopify.biometricAuthenticationIsAvailable();
+  },
+  saveUserCredentials: (email, password) => {
+    return RNShopify.saveUserCredentials(email, password);
+  },
+  recoverSavedUserCredentials: () => {
+    return RNShopify.recoverSavedUserCredentials();
+  },
+  deleteStoredUserCredentials: () => {
+    return RNShopify.deleteStoredUserCredentials();
+  },
 };
 
 /**
